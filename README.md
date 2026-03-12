@@ -1,70 +1,125 @@
-# Getting Started with Create React App
+# Splitter - Full Stack Setup Guide
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## What you need (all free):
+1. Firebase account → https://console.firebase.google.com
+2. Anthropic API key → https://console.anthropic.com (for AI chat)
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## STEP 1 — Install dependencies
 
-### `npm start`
+In your terminal (inside the splitter folder):
+```
+npm install firebase recharts
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## STEP 2 — Create Firebase project
 
-### `npm test`
+1. Go to https://console.firebase.google.com
+2. Click **"Add project"** → give it a name like "splitter-app" → Continue
+3. Disable Google Analytics (optional) → **Create project**
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Enable Authentication:
+4. In left sidebar → **Authentication** → **Get started**
+5. Click **Email/Password** → Enable → Save
 
-### `npm run build`
+### Enable Firestore:
+6. In left sidebar → **Firestore Database** → **Create database**
+7. Choose **Start in test mode** → Next → Select a location → Done
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Get your config:
+8. Go to **Project Settings** (gear icon) → **Your apps** → click **</>** (Web)
+9. Register app (any nickname) → Copy the `firebaseConfig` object
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+---
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## STEP 3 — Add Firebase config
 
-### `npm run eject`
+Open `src/firebase/config.js` and replace the placeholder values:
+```js
+const firebaseConfig = {
+  apiKey: "AIza...",           // ← paste your values here
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  ...
+};
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+---
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## STEP 4 — Add Firestore security rules
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+In Firebase → Firestore → **Rules** tab, paste this:
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+    match /expenses/{id} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid in resource.data.memberIds;
+      allow create: if request.auth != null;
+    }
+    match /friends/{id} {
+      allow read, write: if request.auth != null;
+    }
+    match /settlements/{id} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+Click **Publish**.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+---
 
-## Learn More
+## STEP 5 — Add Anthropic API key (for AI chat)
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Open `src/pages/AIInsights.js` and replace:
+```js
+const ANTHROPIC_API_KEY = "YOUR_ANTHROPIC_API_KEY_HERE";
+```
+with your key from https://console.anthropic.com
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+---
 
-### Code Splitting
+## STEP 6 — Copy files into your project
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Copy everything from `src/` into your React project's `src/` folder.
+Then run:
+```
+npm start
+```
 
-### Analyzing the Bundle Size
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## How to use:
 
-### Making a Progressive Web App
+1. **Register** with your email and name
+2. **Add friends** by searching their email (they must also be registered)
+3. **Add expenses** and split them equally, by % or by exact amount
+4. **Settlements** tab shows the minimum transactions needed to clear all debts
+5. **AI Insights** answers questions about your spending
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+---
 
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Folder structure:
+```
+src/
+  App.js                    ← Main app + all styles
+  firebase/
+    config.js               ← Your Firebase config goes here
+  hooks/
+    useAuth.js              ← Authentication context
+  pages/
+    AuthPage.js             ← Login / Register
+    Dashboard.js            ← Overview + charts
+    Expenses.js             ← Expense list + add modal
+    Friends.js              ← Add/remove real friends
+    Settlements.js          ← Debt simplification
+    AIInsights.js           ← AI chat (needs API key)
+```
