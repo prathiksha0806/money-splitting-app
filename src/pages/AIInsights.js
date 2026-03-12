@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 
 // ─── IMPORTANT: Add your Anthropic API key here ───────────────────
 // Get it from: https://console.anthropic.com → API Keys
-const ANTHROPIC_API_KEY = process.env.REACT_APP_ANTHROPIC_KEY;
+
 
 export default function AIInsights() {
   const { user } = useAuth();
@@ -55,23 +55,18 @@ export default function AIInsights() {
         content: m.text
       }));
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `You are a helpful financial AI assistant for Splitter, an expense-splitting app used in India. 
+      const res = await fetch("/.netlify/functions/anthropic-proxy", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1000,
+    system: `You are a helpful financial AI assistant for Splitter, an expense-splitting app used in India. 
 Respond concisely and practically. Use ₹ for currency. Give actionable advice.
 User context: ${expenseContext}`,
-          messages: [...history, { role: "user", content: msg }],
-        }),
-      });
+    messages: [...history, { role: "user", content: msg }],
+  }),
+});
 
       const data = await res.json();
       if (data.error) throw new Error(data.error.message);
