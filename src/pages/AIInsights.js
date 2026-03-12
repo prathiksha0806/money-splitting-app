@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 
 // ─── IMPORTANT: Add your Anthropic API key here ───────────────────
 // Get it from: https://console.anthropic.com → API Keys
-const ANTHROPIC_API_KEY = "YOUR_ANTHROPIC_API_KEY_HERE";
+const ANTHROPIC_API_KEY = process.env.REACT_APP_ANTHROPIC_KEY;
 
 export default function AIInsights() {
   const { user } = useAuth();
