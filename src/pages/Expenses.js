@@ -64,10 +64,25 @@ export default function Expenses() {
         {filtered.length === 0
           ? <EmptyState text={filter === "all" ? "No expenses yet. Add your first!" : `No ${filter} expenses.`} />
           : filtered.map(e => (
-            <div key={e.id} style={{ position: "relative" }}>
-              <ExpenseRow expense={e} userId={user.uid} />
+            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderBottom: "1px solid var(--border)" }}>
+              <div className="expense-icon">{e.category?.split(" ")[0] || "💸"}</div>
+              <div className="expense-meta" style={{ flex: 1 }}>
+                <div className="expense-name">{e.desc}</div>
+                <div className="expense-detail">
+                  Paid by {e.paidById === user.uid ? "You" : e.paidByName} · {e.memberIds.length} people · {e.createdAt?.toDate ? e.createdAt.toDate().toLocaleDateString("en-IN") : ""}
+                </div>
+              </div>
+              <div className="expense-amount" style={{ textAlign: "right" }}>
+                <div className="expense-total" style={{ color: e.paidById === user.uid ? "#0EA875" : "#E05555" }}>
+                  {e.paidById === user.uid ? "+" : "-"}₹{(e.amount / e.memberIds.length).toFixed(2)}
+                </div>
+                <div className="expense-share">Total: ₹{e.amount}</div>
+              </div>
+              <span className={`tag ${e.settled ? "tag-settled" : "tag-pending"}`}>
+                {e.settled ? "✓ Settled" : "Pending"}
+              </span>
               {!e.settled && e.paidById === user.uid && (
-                <button className="btn btn-sm" style={{ position: "absolute", right: 80, top: "50%", transform: "translateY(-50%)", background: "#0EA87515", color: "#0EA875", border: "1px solid #0EA87544", fontSize: 11 }}
+                <button className="btn btn-sm" style={{ background: "#0EA87515", color: "#0EA875", border: "1px solid #0EA87544", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}
                   onClick={() => markSettled(e.id)}>
                   Mark Settled
                 </button>
