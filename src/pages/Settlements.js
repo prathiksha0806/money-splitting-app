@@ -56,27 +56,29 @@ export default function Settlements() {
   const simplified = simplifyDebts(balances);
 
   async function recordPayment(txn) {
-    setRecording(true);
-    try {
-      await addDoc(collection(db, "settlements"), {
-        fromId: txn.fromId,
-        fromName: txn.from,
-        toId: txn.toId,
-        toName: txn.to,
-        amount: txn.amount,
-        involvedIds: [txn.fromId, txn.toId],
-        settledAt: serverTimestamp(),
-      });
-      // Mark related expenses as settled
-      const relatedExpenses = expenses.filter(e =>
-        e.memberIds.includes(txn.fromId) && e.memberIds.includes(txn.toId)
-      );
-      for (const exp of relatedExpenses) {
-        await updateDoc(doc(db, "expenses", exp.id), { settled: true });
-      }
-    } catch (e) { console.error(e); }
-    setRecording(false);
-  }
+  setRecording(true);
+  try {
+    await addDoc(collection(db, "settlements"), {
+      fromId: txn.fromId,
+      fromName: txn.from,
+      toId: txn.toId,
+      toName: txn.to,
+      amount: txn.amount,
+      involvedIds: [txn.fromId, txn.toId],
+      settledAt: serverTimestamp(),
+    });
+    // Only mark expenses between these two specific people as settled
+    const relatedExpenses = expenses.filter(e =>
+      e.memberIds.includes(txn.fromId) && 
+      e.memberIds.includes(txn.toId) &&
+      e.memberIds.length === 2
+    );
+    for (const exp of relatedExpenses) {
+      await updateDoc(doc(db, "expenses", exp.id), { settled: true });
+    }
+  } catch (e) { console.error(e); }
+  setRecording(false);
+}
 
   return (
     <div className="page-content">
