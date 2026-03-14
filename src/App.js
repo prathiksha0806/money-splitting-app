@@ -308,7 +308,7 @@ function AppInner() {
               <div className="page-sub">{PAGE_INFO[page].sub}</div>
             </div>
           </div>
-          {page !== "ai" && (
+          {page === "dashboard" && (
             <button className="btn btn-primary btn-sm" onClick={() => navigate("expenses")}>
               + Add Expense
             </button>
