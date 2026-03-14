@@ -37,10 +37,10 @@ export default function Settlements() {
 
   useEffect(() => {
     if (!user) return;
+    // Get ALL expenses (not just unsettled) to calculate balances properly
     const eq = query(
       collection(db, "expenses"),
-      where("memberIds", "array-contains", user.uid),
-      where("settled", "==", false)
+      where("memberIds", "array-contains", user.uid)
     );
     const unsub1 = onSnapshot(eq, snap =>
       setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() })))
@@ -56,47 +56,68 @@ export default function Settlements() {
     return () => { unsub1(); unsub2(); };
   }, [user]);
 
-  // Build balance map
+  // Build balance map — respect per-member settlements
   const balanceMap = {};
   expenses.forEach(exp => {
+    if (exp.settled) return; // skip fully settled
     const share = exp.amount / exp.memberIds.length;
+    const settledMembers = exp.settledMembers || [];
     exp.memberIds.forEach((uid, idx) => {
       if (!balanceMap[uid]) balanceMap[uid] = { uid, name: exp.memberNames?.[idx] || uid, amount: 0 };
-      balanceMap[uid].amount += uid === exp.paidById ? (exp.amount - share) : -share;
+      if (uid === exp.paidById) {
+        // Count only members who haven't settled yet
+        const unsettledCount = exp.memberIds.filter(id => id !== exp.paidById && !settledMembers.includes(id)).length;
+        balanceMap[uid].amount += share * unsettledCount;
+      } else if (!settledMembers.includes(uid)) {
+        balanceMap[uid].amount -= share;
+      }
     });
   });
+
   const balances = Object.values(balanceMap);
   const simplified = simplifyDebts(balances);
-  const pendingSimplified = simplified;
-  // Who owes me / I owe who
-  const iOwe = pendingSimplified.filter(s => s.fromId === user.uid);
-  const owesMe = pendingSimplified.filter(s => s.toId === user.uid);
+  const iOwe = simplified.filter(s => s.fromId === user.uid);
+  const owesMe = simplified.filter(s => s.toId === user.uid);
+  const others = simplified.filter(s => s.fromId !== user.uid && s.toId !== user.uid);
+  const myBalance = balanceMap[user.uid]?.amount || 0;
 
   async function recordPayment(txn) {
-  const key = txn.fromId + txn.toId;
-  setRecordingId(key);
-  try {
-    await addDoc(collection(db, "settlements"), {
-      fromId: txn.fromId,
-      fromName: txn.from,
-      toId: txn.toId,
-      toName: txn.to,
-      amount: txn.amount,
-      involvedIds: [txn.fromId, txn.toId],
-      settledAt: serverTimestamp(),
-    });
-    // Mark only this pair's expenses as settled
-    const related = expenses.filter(e =>
-      e.memberIds.includes(txn.fromId) &&
-      e.memberIds.includes(txn.toId)
-    );
-    const { updateDoc, doc: fDoc } = await import("firebase/firestore");
-    for (const exp of related) {
-      await updateDoc(fDoc(db, "expenses", exp.id), { settled: true });
-    }
-  } catch (e) { console.error(e); }
-  setRecordingId(null);
-}
+    const key = txn.fromId + txn.toId;
+    setRecordingId(key);
+    try {
+      // Save to history
+      await addDoc(collection(db, "settlements"), {
+        fromId: txn.fromId,
+        fromName: txn.from,
+        toId: txn.toId,
+        toName: txn.to,
+        amount: txn.amount,
+        involvedIds: [txn.fromId, txn.toId],
+        settledAt: serverTimestamp(),
+      });
+
+      // Mark the payer as settled in each shared expense
+      const related = expenses.filter(e =>
+        !e.settled &&
+        e.memberIds.includes(txn.fromId) &&
+        e.memberIds.includes(txn.toId)
+      );
+
+      for (const exp of related) {
+        const settledMembers = exp.settledMembers || [];
+        // The debtor (fromId) has paid
+        const updatedSettled = [...new Set([...settledMembers, txn.fromId])];
+        // Check if all non-payer members have settled
+        const nonPayers = exp.memberIds.filter(id => id !== exp.paidById);
+        const allSettled = nonPayers.every(id => updatedSettled.includes(id));
+        await updateDoc(doc(db, "expenses", exp.id), {
+          settledMembers: updatedSettled,
+          settled: allSettled,
+        });
+      }
+    } catch (e) { console.error(e); }
+    setRecordingId(null);
+  }
 
   async function deleteHistory(id) {
     await deleteDoc(doc(db, "settlements", id));
@@ -107,11 +128,8 @@ export default function Settlements() {
     for (const s of history) await deleteDoc(doc(db, "settlements", s.id));
   }
 
-  const myBalance = balanceMap[user.uid]?.amount || 0;
-
   return (
     <div className="page-content">
-
       {/* Top summary */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
         <div className="stat-card" style={{ textAlign: "center" }}>
@@ -119,14 +137,14 @@ export default function Settlements() {
           <div className="stat-value" style={{ color: "#0EA875", fontSize: 22 }}>
             ₹{owesMe.reduce((s, t) => s + t.amount, 0).toFixed(2)}
           </div>
-          <div style={{ fontSize: 12, color: "#8891AA" }}>{owesMe.length} people</div>
+          <div style={{ fontSize: 12, color: "#8891AA" }}>{owesMe.length} {owesMe.length === 1 ? "person" : "people"}</div>
         </div>
         <div className="stat-card" style={{ textAlign: "center" }}>
           <div className="stat-label">You Owe</div>
           <div className="stat-value" style={{ color: iOwe.length > 0 ? "#E05555" : "#0EA875", fontSize: 22 }}>
             ₹{iOwe.reduce((s, t) => s + t.amount, 0).toFixed(2)}
           </div>
-          <div style={{ fontSize: 12, color: "#8891AA" }}>{iOwe.length} people</div>
+          <div style={{ fontSize: 12, color: "#8891AA" }}>{iOwe.length} {iOwe.length === 1 ? "person" : "people"}</div>
         </div>
         <div className="stat-card" style={{ textAlign: "center" }}>
           <div className="stat-label">Net Balance</div>
@@ -138,7 +156,7 @@ export default function Settlements() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 0, background: "var(--surface2)", borderRadius: 12, padding: 4, width: "fit-content" }}>
+      <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 12, padding: 4, width: "fit-content" }}>
         {["pending", "history", "balances"].map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{
@@ -148,26 +166,22 @@ export default function Settlements() {
               color: tab === t ? "var(--accent)" : "var(--muted)",
               boxShadow: tab === t ? "0 1px 4px rgba(0,0,0,0.08)" : "none"
             }}>
-            {t === "pending" ? `Pending (${pendingSimplified.length})` : t === "history" ? `History (${history.length})` : "Balances"}
+            {t === "pending" ? `Pending (${simplified.length})` : t === "history" ? `History (${history.length})` : "Balances"}
           </button>
         ))}
       </div>
 
-      {/* Pending Settlements */}
+      {/* Pending */}
       {tab === "pending" && (
         <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div>
-              <div className="card-title" style={{ marginBottom: 2 }}>Pending Settlements</div>
-              <div style={{ fontSize: 12, color: "#8891AA" }}>Minimum transactions to clear all debts</div>
-            </div>
-          </div>
+          <div className="card-title" style={{ marginBottom: 4 }}>Pending Settlements</div>
+          <div style={{ fontSize: 12, color: "#8891AA", marginBottom: 16 }}>Minimum transactions to clear all debts</div>
 
-          {pendingSimplified.length === 0 ? (
+          {simplified.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0" }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
               <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>All Settled Up!</div>
-              <div style={{ color: "#8891AA", fontSize: 13 }}>No pending payments between anyone</div>
+              <div style={{ color: "#8891AA", fontSize: 13 }}>No pending payments</div>
             </div>
           ) : (
             <>
@@ -177,26 +191,30 @@ export default function Settlements() {
                     💚 People who owe you
                   </div>
                   {owesMe.map((s, i) => (
-                    <SettlementRow key={i} txn={s} user={user} recording={recordingId === s.fromId + s.toId} onRecord={() => recordPayment(s)} />
+                    <SettlementRow key={i} txn={s} user={user}
+                      recording={recordingId === s.fromId + s.toId}
+                      onRecord={() => recordPayment(s)} />
                   ))}
                 </div>
               )}
               {iOwe.length > 0 && (
-                <div>
+                <div style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#E05555", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
                     ❤️ You owe these people
                   </div>
                   {iOwe.map((s, i) => (
-                    <SettlementRow key={i} txn={s} user={user} recording={recordingId === s.fromId + s.toId} onRecord={() => recordPayment(s)} isDebt />
+                    <SettlementRow key={i} txn={s} user={user}
+                      recording={recordingId === s.fromId + s.toId}
+                      onRecord={() => recordPayment(s)} isDebt />
                   ))}
                 </div>
               )}
-              {pendingSimplified.filter(s => s.fromId !== user.uid && s.toId !== user.uid).length > 0 && (
-                <div style={{ marginTop: 20 }}>
+              {others.length > 0 && (
+                <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#8891AA", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
                     Between others
                   </div>
-                  {pendingSimplified.filter(s => s.fromId !== user.uid && s.toId !== user.uid).map((s, i) => (
+                  {others.map((s, i) => (
                     <SettlementRow key={i} txn={s} user={user} recording={false} onRecord={() => recordPayment(s)} />
                   ))}
                 </div>
@@ -214,9 +232,7 @@ export default function Settlements() {
             {history.length > 0 && (
               <button className="btn btn-sm"
                 style={{ background: "#E0555510", color: "#E05555", border: "1px solid #E0555530" }}
-                onClick={clearAllHistory}>
-                Clear All
-              </button>
+                onClick={clearAllHistory}>Clear All</button>
             )}
           </div>
           {history.length === 0 ? (
@@ -277,8 +293,8 @@ function SettlementRow({ txn, user, recording, onRecord, isDebt }) {
       background: "var(--surface2)", borderRadius: 12, marginBottom: 10,
       border: `1px solid ${isDebt ? "#E0555520" : "#0EA87520"}`
     }}>
-      <div style={{ width: 34, height: 34, borderRadius: 9, background: "#E0555520", color: "#E05555", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-        {txn.from?.[0]?.toUpperCase()}
+      <div style={{ width: 34, height: 34, borderRadius: 9, background: isDebt ? "#0EA87520" : "#E0555520", color: isDebt ? "#0EA875" : "#E05555", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+        {isDebt ? txn.to?.[0]?.toUpperCase() : txn.from?.[0]?.toUpperCase()}
       </div>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>
@@ -293,9 +309,7 @@ function SettlementRow({ txn, user, recording, onRecord, isDebt }) {
       <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 18, color: isDebt ? "#E05555" : "#0EA875" }}>
         ₹{txn.amount}
       </div>
-      <button
-        onClick={onRecord}
-        disabled={recording}
+      <button onClick={onRecord} disabled={recording}
         style={{
           padding: "8px 16px", borderRadius: 9, border: "none", cursor: recording ? "not-allowed" : "pointer",
           background: isDebt ? "#E05555" : "#0EA875", color: "white",
