@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   collection, query, where, onSnapshot, addDoc,
-  serverTimestamp,  deleteDoc, doc
+  serverTimestamp, updateDoc, deleteDoc, doc
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../hooks/useAuth";
@@ -67,9 +67,7 @@ export default function Settlements() {
   });
   const balances = Object.values(balanceMap);
   const simplified = simplifyDebts(balances);
-  const recordedKeys = new Set(history.map(h => h.fromId + h.toId));
-  const pendingSimplified = simplified.filter(s => !recordedKeys.has(s.fromId + s.toId));
-
+  const pendingSimplified = simplified;
   // Who owes me / I owe who
   const iOwe = pendingSimplified.filter(s => s.fromId === user.uid);
   const owesMe = pendingSimplified.filter(s => s.toId === user.uid);
@@ -87,6 +85,15 @@ export default function Settlements() {
       involvedIds: [txn.fromId, txn.toId],
       settledAt: serverTimestamp(),
     });
+    // Mark only this pair's expenses as settled
+    const related = expenses.filter(e =>
+      e.memberIds.includes(txn.fromId) &&
+      e.memberIds.includes(txn.toId)
+    );
+    const { updateDoc, doc: fDoc } = await import("firebase/firestore");
+    for (const exp of related) {
+      await updateDoc(fDoc(db, "expenses", exp.id), { settled: true });
+    }
   } catch (e) { console.error(e); }
   setRecordingId(null);
 }
