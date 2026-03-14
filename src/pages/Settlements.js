@@ -67,10 +67,12 @@ export default function Settlements() {
   });
   const balances = Object.values(balanceMap);
   const simplified = simplifyDebts(balances);
+  const recordedKeys = new Set(history.map(h => h.fromId + h.toId));
+  const pendingSimplified = simplified.filter(s => !recordedKeys.has(s.fromId + s.toId));
 
   // Who owes me / I owe who
-  const iOwe = simplified.filter(s => s.fromId === user.uid);
-  const owesMe = simplified.filter(s => s.toId === user.uid);
+  const iOwe = pendingSimplified.filter(s => s.fromId === user.uid);
+  const owesMe = pendingSimplified.filter(s => s.toId === user.uid);
 
   async function recordPayment(txn) {
   const key = txn.fromId + txn.toId;
@@ -139,7 +141,7 @@ export default function Settlements() {
               color: tab === t ? "var(--accent)" : "var(--muted)",
               boxShadow: tab === t ? "0 1px 4px rgba(0,0,0,0.08)" : "none"
             }}>
-            {t === "pending" ? `Pending (${simplified.length})` : t === "history" ? `History (${history.length})` : "Balances"}
+            {t === "pending" ? `Pending (${pendingSimplified.length})` : t === "history" ? `History (${history.length})` : "Balances"}
           </button>
         ))}
       </div>
@@ -154,7 +156,7 @@ export default function Settlements() {
             </div>
           </div>
 
-          {simplified.length === 0 ? (
+          {pendingSimplified.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0" }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
               <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>All Settled Up!</div>
@@ -182,12 +184,12 @@ export default function Settlements() {
                   ))}
                 </div>
               )}
-              {simplified.filter(s => s.fromId !== user.uid && s.toId !== user.uid).length > 0 && (
+              {pendingSimplified.filter(s => s.fromId !== user.uid && s.toId !== user.uid).length > 0 && (
                 <div style={{ marginTop: 20 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#8891AA", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
                     Between others
                   </div>
-                  {simplified.filter(s => s.fromId !== user.uid && s.toId !== user.uid).map((s, i) => (
+                  {pendingSimplified.filter(s => s.fromId !== user.uid && s.toId !== user.uid).map((s, i) => (
                     <SettlementRow key={i} txn={s} user={user} recording={false} onRecord={() => recordPayment(s)} />
                   ))}
                 </div>
