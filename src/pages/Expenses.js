@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import {
   collection, query, where, onSnapshot, addDoc,
-  serverTimestamp, doc, updateDoc
+  serverTimestamp, doc, updateDoc, deleteDoc
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../hooks/useAuth";
-import {  EmptyState } from "./Dashboard";
+import { ExpenseRow, EmptyState } from "./Dashboard";
 
 const CATEGORIES = ["🍕 Food", "🏠 Rent", "🚗 Travel", "🎉 Fun", "🛒 Groceries", "💡 Utilities", "🎬 Entertainment"];
 
@@ -20,7 +20,7 @@ export default function Expenses() {
     if (!user) return;
     const q = query(
       collection(db, "expenses"),
-      where("memberIds", "array-contains", user.uid),
+      where("memberIds", "array-contains", user.uid)
       
     );
     return onSnapshot(q, snap => {
@@ -41,6 +41,12 @@ export default function Expenses() {
 
   async function markSettled(expenseId) {
     await updateDoc(doc(db, "expenses", expenseId), { settled: true });
+  }
+
+  async function deleteExpense(expenseId) {
+    if (window.confirm("Delete this expense?")) {
+      await deleteDoc(doc(db, "expenses", expenseId));
+    }
   }
 
   return (
@@ -87,6 +93,11 @@ export default function Expenses() {
                   Mark Settled
                 </button>
               )}
+              <button className="btn btn-sm"
+                style={{ background: "#E0555510", color: "#E05555", border: "1px solid #E0555530", fontSize: 11, flexShrink: 0 }}
+                onClick={() => deleteExpense(e.id)}>
+                🗑
+              </button>
             </div>
           ))
         }
