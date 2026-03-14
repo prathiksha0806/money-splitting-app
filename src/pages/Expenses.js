@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../hooks/useAuth";
-import { ExpenseRow, EmptyState } from "./Dashboard";
+import {  EmptyState } from "./Dashboard";
 
 const CATEGORIES = ["🍕 Food", "🏠 Rent", "🚗 Travel", "🎉 Fun", "🛒 Groceries", "💡 Utilities", "🎬 Entertainment"];
 
